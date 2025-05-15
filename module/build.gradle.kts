@@ -162,7 +162,7 @@ androidComponents.onVariants { variant ->
             """.trimMargin()
             changelogFile.writeText(newLogEntry)
         }
-        
+
 
         val pushTask = task<Exec>("push$variantCapped") {
             group = "module"
