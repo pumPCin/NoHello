@@ -8,5 +8,4 @@
 .externalNativeBuild
 .cxx
 local.properties
-.github/updates/nohello.json
-.github/updates/nohello_changelog.md
+/.github/updates/

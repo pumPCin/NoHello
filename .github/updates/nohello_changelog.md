@@ -1,6 +1,6 @@
-### v0.0.4 (35)
+### v0.0.4 (36)
 
-- Commit: `d5962a2`
+- Commit: `3a7c3a4`
 - ABI(s): arm64-v8a, armeabi-v7a, x86, x86_64
 
 - Added config directory `/data/adb/nohello`.
