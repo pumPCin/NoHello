@@ -64,30 +64,4 @@ jobs:
         with:
           name: release-mappings
           path: "./service/build/outputs/mapping/release"
-
-  update-metadata:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Set up Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit and push if changes
-        run: |
-          git add .github/updates/nohello.json .github/updates/nohello_changelog.md
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update nohello metadata [skip ci]"
-            git push origin HEAD:master
-          else
-            echo "No changes to commit"
-          fi
-
+          
