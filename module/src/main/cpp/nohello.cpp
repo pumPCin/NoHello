@@ -256,13 +256,7 @@ private:
 
     void preSpecialize(AppSpecializeArgs *args) {
 		unsigned int flags = api->getFlags();
-		const bool whitelist = []() {
-			std::error_code ec;
-			auto status = fs::status("/data/adb/nohello/whitelist");
-			if (ec)
-				return false;
-			return fs::is_regular_file(status);
-		}();
+		const bool whitelist = access("/data/adb/nohello/whitelist", F_OK) == 0;
 		if (flags & zygisk::StateFlag::PROCESS_GRANTED_ROOT) {
 			api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 			return;

@@ -130,8 +130,9 @@ androidComponents.onVariants { variant ->
 
             val jsonFile = File(updatesDir, "nohello.json")
             val changelogFile = File(updatesDir, "nohello_changelog.md")
+            val tempChangelog = File(buildDir, "temp_changelog.md")
 
-            // Update JSON
+            // Write JSON
             val jsonContent = """
             {
                 "versionCode": $verCode,
@@ -152,19 +153,27 @@ androidComponents.onVariants { variant ->
                 .readText()
                 .trim()
 
-            // Append to Changelog
+            // Write to a temp changelog file
             val newLogEntry = """
-            ### $verName ($verCode)
+            |### $verName ($verCode)
+            |
+            |- Commit: `$commitHash`
+            |- ABI(s): ${abiList.joinToString(", ")}
+            |
+            |$commitMessage
+            """.trimMargin()
+            tempChangelog.writeText(newLogEntry)
 
-            - Commit: `$commitHash`
-            - ABI(s): ${abiList.joinToString(", ")}
+            // Copy with CRLF fix (LF-only)
+            project.copy {
+                from(tempChangelog)
+                into(updatesDir)
+                rename { "nohello_changelog.md" }
+                filter<FixCrLfFilter>("eol" to FixCrLfFilter.CrLf.newInstance("lf"))
+            }
 
-            $commitMessage
-
-            """.trimIndent()
-            changelogFile.writeText(newLogEntry)
+            tempChangelog.delete()
         }
-
 
 
         val pushTask = task<Exec>("push$variantCapped") {
