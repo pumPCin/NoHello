@@ -3,6 +3,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class PropertyManager {
 public:
@@ -15,7 +16,12 @@ public:
 
 private:
 	std::string filePath;
-	std::unordered_map<std::string, std::string> props;
+
+	// Maintain insertion order
+	std::vector<std::pair<std::string, std::string>> orderedProps;
+
+	// Fast lookup: key -> index in orderedProps
+	std::unordered_map<std::string, size_t> keyIndex;
 
 	bool loadFromFile();
 	bool saveToFile();

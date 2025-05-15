@@ -94,6 +94,26 @@ static int pidfd_open(pid_t pid, unsigned int flags)
 	return syscall(SYS_pidfd_open, pid, flags);
 }
 
+static ssize_t process_vm_readv(pid_t pid,
+								 const struct iovec *local_iov,
+								 unsigned long liovcnt,
+								 const struct iovec *remote_iov,
+								 unsigned long riovcnt,
+								 unsigned long flags)
+{
+	return syscall(SYS_process_vm_readv, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
+}
+
+static ssize_t process_vm_writev(pid_t pid,
+								 const struct iovec *local_iov,
+								 unsigned long liovcnt,
+								 const struct iovec *remote_iov,
+								 unsigned long riovcnt,
+								 unsigned long flags)
+{
+	return syscall(SYS_process_vm_writev, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
+}
+
 bool switchnsto(pid_t pid) {
 	int fd = pidfd_open(pid, 0);
 	if (fd != -1) {
@@ -112,5 +132,14 @@ bool switchnsto(pid_t pid) {
 	} else {
 		LOGE("open: %s", strerror(errno));
 	}
+	return false;
+}
+
+bool isuserapp(int uid) {
+	int appid = uid % AID_USER_OFFSET;
+	if (appid >= AID_APP_START && appid <= AID_APP_END)
+		return true;
+	if (appid >= AID_ISOLATED_START && appid <= AID_ISOLATED_END)
+		return true;
 	return false;
 }

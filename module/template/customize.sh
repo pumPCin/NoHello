@@ -64,6 +64,11 @@ mv "$TMPDIR/sepolicy.rule" "$MODPATH"
 
 HAS32BIT=false && ([ $(getprop ro.product.cpu.abilist32) ] || [ $(getprop ro.system.product.cpu.abilist32) ]) && HAS32BIT=true
 
+if [ ! -d "$CONFIG_DIR" ]; then
+  ui_print "- Creating configuration directory"
+  mkdir -p "$CONFIG_DIR"
+fi
+
 mkdir "$MODPATH/zygisk"
 
 if [ "$ARCH" = "x86" ] || [ "$ARCH" = "x64" ]; then
@@ -86,3 +91,9 @@ else
   extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH/zygisk" true
   mv "$MODPATH/zygisk/lib$SONAME.so" "$MODPATH/zygisk/arm64-v8a.so"
 fi
+
+set_perm_recursive "$MODPATH" 0 0 0755 0644
+
+mkdir -p /data/adb/nohello
+
+ui_print "- ${DESCRIPTION}"

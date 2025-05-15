@@ -233,10 +233,7 @@ public:
     }
 
     void preAppSpecialize(AppSpecializeArgs *args) override {
-        // Use JNI to fetch our process name
-        const char *process = env->GetStringUTFChars(args->nice_name, nullptr);
-        preSpecialize(process);
-        env->ReleaseStringUTFChars(args->nice_name, process);
+        preSpecialize(args);
     }
 
 	void postAppSpecialize(const AppSpecializeArgs *args) override {
@@ -257,13 +254,20 @@ private:
 	dev_t dev{};
 	ino_t inode{};
 
-    void preSpecialize(const char *process) {
+    void preSpecialize(AppSpecializeArgs *args) {
 		unsigned int flags = api->getFlags();
+		const bool whitelist = []() {
+			std::error_code ec;
+			auto status = fs::status("/data/adb/nohello/whitelist");
+			if (ec)
+				return false;
+			return fs::is_regular_file(status);
+		}();
 		if (flags & zygisk::StateFlag::PROCESS_GRANTED_ROOT) {
 			api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 			return;
 		}
-		if (flags & zygisk::StateFlag::PROCESS_ON_DENYLIST) {
+		if ((whitelist && isuserapp(args->uid)) || flags & zygisk::StateFlag::PROCESS_ON_DENYLIST) {
 			pid_t pid = getpid();
 			cfd = api->connectCompanion(); // Companion FD
 			api->exemptFd(cfd);
@@ -329,7 +333,9 @@ private:
 					res = EXIT_FAILURE; // Fallback to unmount from zygote
 				}
 
-				close(cfd);
+				// Closing in postAppSpecialize to generalize
+				// for other processes too
+				//close(cfd);
 
 				if (res == MODULE_CONFLICT) {
 					// Revert mount changes if conflict
@@ -371,7 +377,7 @@ private:
 		// DO NOT UNCOMMENT THIS
 		// For some reasons it causes apps to loop infinitely after
 		// 2~3 executions
-		//close(cfd);
+		close(cfd);
 		api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 	}
 
@@ -385,7 +391,7 @@ static void NoRoot(int fd) {
 		// This file exists only after installing/updating the module
 		// It should have the default description
 		// Since this is static const it's only evaluated once per boot since companion won't exit
-		return f ? std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()) : "A Zygisk module to hide root.";
+		return f ? ([](std::ifstream& s){ std::string l; std::getline(s, l); return l; })(f) : "A Zygisk module to hide root.";
 	}();
 
 	static const bool compatbility = [] {
@@ -393,8 +399,11 @@ static void NoRoot(int fd) {
 			return false;
 		if (fs::exists("/data/adb/modules/zygisk-assistant") && !fs::exists("/data/adb/modules/zygisk-assistant/disable"))
 			return false;
+		if (fs::exists("/data/adb/modules/treat_wheel") && !fs::exists("/data/adb/modules/treat_wheel/disable"))
+			return false;
 		return true;
 	}();
+
 	int result;
 	if (read(fd, &pid, sizeof(pid)) != sizeof(pid)) {
         LOGE("#[ps::Companion] Failed to read PID: %s", strerror(errno));
@@ -404,7 +413,7 @@ static void NoRoot(int fd) {
 	PropertyManager pm("/data/adb/modules/zygisk_nohello/module.prop");
 	if (!compatbility) {
 		result = MODULE_CONFLICT;
-		pm.setProp("description", "[" + emoji::emojize(":x: ") + "Incompatible environment] " + description);
+		pm.setProp("description", "[" + emoji::emojize(":x: ") + "Conflicting modules] " + description);
 		goto skip;
 	}
 	result = forkcall(

@@ -124,6 +124,49 @@ androidComponents.onVariants { variant ->
             from(moduleDir)
         }
 
+        zipTask.doLast {
+            val updatesDir = rootProject.layout.projectDirectory.dir(".github/updates").asFile
+            updatesDir.mkdirs()
+
+            val jsonFile = File(updatesDir, "nohello.json")
+            val changelogFile = File(updatesDir, "nohello_changelog.md")
+
+            // Update JSON
+            val jsonContent = """
+            {
+                "versionCode": $verCode,
+                "version": "$verName",
+                "zipUrl": "https://github.com/MhmRdd/nohello/releases/download/$verName/$zipFileName",
+                "changelog": "https://github.com/MhmRdd/nohello/raw/master/.github/updates/nohello_changelog.md"
+            }
+            """.trimIndent()
+            jsonFile.writeText(jsonContent)
+
+            // Get latest Git commit message
+            val commitMessage = ProcessBuilder("git", "log", "-1", "--pretty=%B")
+                .directory(rootProject.projectDir)
+                .redirectErrorStream(true)
+                .start()
+                .inputStream
+                .bufferedReader()
+                .readText()
+                .trim()
+
+            // Append to Changelog
+            val newLogEntry = """
+            ### $verName ($verCode)
+
+            - Commit: `$commitHash`
+            - ABI(s): ${abiList.joinToString(", ")}
+
+            $commitMessage
+
+            """.trimIndent()
+            changelogFile.writeText(newLogEntry)
+        }
+
+
+
         val pushTask = task<Exec>("push$variantCapped") {
             group = "module"
             dependsOn(zipTask)
