@@ -8,6 +8,7 @@ plugins {
 }
 
 val sdkDir: String by rootProject.extra
+val zygDir: File by rootProject.extra
 val moduleId: String by rootProject.extra
 val moduleName: String by rootProject.extra
 val verCode: Int by rootProject.extra
@@ -125,7 +126,7 @@ androidComponents.onVariants { variant ->
         }
 
         zipTask.doLast {
-            val updatesDir = rootProject.layout.projectDirectory.dir(".github/updates").asFile
+            val updatesDir = zygDir
             updatesDir.mkdirs()
 
             val jsonFile = File(updatesDir, "nohello.json")
@@ -137,7 +138,7 @@ androidComponents.onVariants { variant ->
                 "versionCode": $verCode,
                 "version": "$verName",
                 "zipUrl": "https://github.com/MhmRdd/nohello/releases/download/$verName/$zipFileName",
-                "changelog": "https://github.com/MhmRdd/nohello/raw/master/.github/updates/nohello_changelog.md"
+                "changelog": "https://mhmrdd.github.io/01000004/zygisk/nohello_changelog.md"
             }
             """.trimIndent()
             jsonFile.writeText(jsonContent)

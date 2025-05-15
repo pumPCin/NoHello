@@ -28,6 +28,11 @@ val sdkDir: String by extra(
         ?: ""
 )
 
+val zygDir: File by extra(
+    localProperties.getProperty("zyg.dir")?.let { File(it) }
+        ?: rootProject.layout.projectDirectory.dir(".github/updates").asFile
+)
+
 val gitCommitCount = "git rev-list HEAD --count".execute().toInt()
 val gitCommitHash = "git rev-parse --verify --short HEAD".execute()
 
