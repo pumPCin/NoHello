@@ -137,7 +137,7 @@ androidComponents.onVariants { variant ->
             {
                 "versionCode": $verCode,
                 "version": "$verName",
-                "zipUrl": "https://github.com/MhmRdd/nohello/releases/download/$verName/$zipFileName",
+                "zipUrl": "https://github.com/MhmRdd/nohello/releases/download/${verName.removePrefix("v")}/$zipFileName",
                 "changelog": "https://mhmrdd.github.io/01000004/zygisk/nohello_changelog.md"
             }
             """.trimIndent()
