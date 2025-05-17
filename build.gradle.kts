@@ -42,7 +42,7 @@ val moduleName by extra("Nohello")
 val verName by extra("v0.0.4")
 val verCode by extra(gitCommitCount)
 val commitHash by extra(gitCommitHash)
-val abiList by extra(listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
+val abiList by extra(listOf("arm64-v8a", "armeabi-v7a"))
 
 val androidMinSdkVersion by extra(26)
 val androidTargetSdkVersion by extra(34)

@@ -36,7 +36,6 @@ jobs:
       - name: Build with Gradle
         run: |
           ./gradlew zipRelease
-          ./gradlew zipDebug
 
       - name: Prepare artifact
         if: success()
@@ -52,12 +51,6 @@ jobs:
         with:
           name: ${{ steps.prepareArtifact.outputs.releaseName }}
           path: "./module-release/*"
-
-      - name: Upload debug
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.prepareArtifact.outputs.debugName }}
-          path: "./module-debug/*"
 
       - name: Upload release mappings
         uses: actions/upload-artifact@v4
