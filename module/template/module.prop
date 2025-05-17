@@ -4,4 +4,4 @@ version=${versionName}
 versionCode=${versionCode}
 author=mhmrdd
 description=A Zygisk module to hide root.
-#updateJson=https://mhmrdd.github.io/01000004/zygisk/nohello.json
+updateJson=https://mhmrdd.github.io/01000004/zygisk/nohello.json
