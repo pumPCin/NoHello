@@ -95,5 +95,9 @@ fi
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 
 mkdir -p /data/adb/nohello
+if [ ! -e "/data/adb/nohello/umount" ]; then
+  extract "$ZIPFILE" "umount" "/data/adb/nohello"
+  touch "/data/adb/nohello/umount_persist"
+fi
 
 ui_print "- ${DESCRIPTION}"

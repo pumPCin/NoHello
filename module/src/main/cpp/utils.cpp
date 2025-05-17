@@ -119,14 +119,20 @@ bool switchnsto(pid_t pid) {
 	if (fd != -1) {
 		int res = setns(fd, CLONE_NEWNS);
 		close(fd);
-		return res == 0;
+		if (!res)
+			return true;
+		else {
+			LOGE("setns(procfd_open(%d, 0) -> %d, CLONE_NEWNS): %s", pid, fd, strerror(errno));
+			goto fallback;
+		}
 	} else {
 		LOGE("pidfd_open: %s", strerror(errno));
 	}
+	fallback:
 	std::string path = "/proc/" + std::to_string(pid) + "/ns/mnt";
 	fd = open(path.c_str(), O_RDONLY);
 	if (fd != -1) {
-		int res = setns(fd, 0);
+		int res = setns(fd, CLONE_NEWNS);
 		close(fd);
 		return res == 0;
 	} else {

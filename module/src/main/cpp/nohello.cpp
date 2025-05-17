@@ -32,6 +32,7 @@
 #include <thread>
 #include "log.h"
 #include "PropertyManager.cpp"
+#include "MountRuleParser.cpp"
 #include "external/emoji.h"
 
 using zygisk::Api;
@@ -77,6 +78,48 @@ static bool anomaly(MountRootResolver mrs, const MountInfo &mount) {
 	} else if (fs_type == "tmpfs") {
 		if (toumount_sources.count(mnt_src)) {
 			return true;
+		}
+	}
+	return false;
+}
+
+static bool anomaly(const MountRuleParser::MountRule rule, MountRootResolver mrs, const MountInfo &mount) {
+	const std::string resolvedRoot = mrs.resolveRoot(mount);
+	const auto& fsType = mount.getFsType();
+	if (fsType != "overlay") {
+		return rule.matches(resolvedRoot, mount.getMountPoint(), fsType, mount.getMountSource());
+	} else {
+		const auto& fm = mount.getMountOptions().flagmap;
+		std::vector<std::string> roots = {resolvedRoot};
+		for (const auto* key : {"lowerdir", "upperdir", "workdir"}) {
+			auto it = fm.find(key);
+			if (it != fm.end()) {
+				roots.push_back(it->second);
+			}
+		}
+		return rule.matches(roots, mount.getMountPoint(), fsType, mount.getMountSource());
+	}
+	return false;
+}
+
+static bool anomaly(const std::vector<MountRuleParser::MountRule>& rules, MountRootResolver mrs, const MountInfo &mount) {
+	const std::string resolvedRoot = mrs.resolveRoot(mount);
+	const auto& fsType = mount.getFsType();
+	const auto& fm = mount.getMountOptions().flagmap;
+	for (const auto& rule : rules) {
+		if (fsType != "overlay") {
+			if (rule.matches(resolvedRoot, mount.getMountPoint(), fsType, mount.getMountSource()))
+				return true;
+		} else {
+			std::vector<std::string> roots = {resolvedRoot};
+			for (const auto* key : {"lowerdir", "upperdir", "workdir"}) {
+				auto it = fm.find(key);
+				if (it != fm.end()) {
+					roots.push_back(it->second);
+				}
+			}
+			if (rule.matches(roots, mount.getMountPoint(), fsType, mount.getMountSource()))
+				return true;
 		}
 	}
 	return false;
@@ -150,18 +193,40 @@ static std::unique_ptr<std::string> getExternalErrorBehaviour(const MountInfo& m
 	return nullptr;
 }
 
+static void doumount(const std::string& mntPnt);
+
 static void unmount(const std::vector<MountInfo>& mounts) {
 	MountRootResolver mrs(mounts);
 	for (const auto& mount : std::ranges::reverse_view(mounts)) {
-        	if (anomaly(mrs, mount)) {
-			errno = 0;
-			int res;
-			if ((res = umount2(mount.getMountPoint().c_str(), MNT_DETACH)) == 0)
-				LOGD("umount2(\"%s\", MNT_DETACH): returned (0): 0 (Success)", mount.getMountPoint().c_str());
-			else
-				LOGE("umount2(\"%s\", MNT_DETACH): returned %d: %d (%s)", mount.getMountPoint().c_str(), res, errno, strerror(errno));
-		}
+		if (anomaly(mrs, mount))
+			doumount(mount.getMountPoint());
 	}
+}
+
+static void unmount(const std::vector<MountRuleParser::MountRule>& rules, const std::vector<MountInfo>& mounts) {
+	MountRootResolver mrs(mounts);
+	for (const auto& mount : std::ranges::reverse_view(mounts)) {
+		if (anomaly(rules, mrs, mount))
+			doumount(mount.getMountPoint());
+	}
+}
+
+static void unmount(const MountRuleParser::MountRule& rule, const std::vector<MountInfo>& mounts) {
+	MountRootResolver mrs(mounts);
+	for (const auto& mount : std::ranges::reverse_view(mounts)) {
+		if (anomaly(rule, mrs, mount))
+			doumount(mount.getMountPoint());
+	}
+}
+
+static void doumount(const std::string& mntPnt) {
+	errno = 0;
+	int res;
+	const char *mntpnt = mntPnt.c_str();
+	if ((res = umount2(mntpnt, MNT_DETACH)) == 0)
+		LOGD("umount2(\"%s\", MNT_DETACH): returned (0): 0 (Success)", mntpnt);
+	else
+		LOGE("umount2(\"%s\", MNT_DETACH): returned %d: %d (%s)", mntpnt, res, errno, strerror(errno));
 }
 
 static void remount(const std::vector<MountInfo>& mounts) {
@@ -223,8 +288,6 @@ static int resetresuid(uid_t ruid, uid_t euid, uid_t suid) {
 	return ar_setresuid(ruid, euid, suid);
 }
 
-
-
 class NoHello : public zygisk::ModuleBase {
 public:
     void onLoad(Api *_api, JNIEnv *_env) override {
@@ -251,8 +314,11 @@ private:
     Api *api{};
     JNIEnv *env{};
 	int cfd{};
-	dev_t dev{};
-	ino_t inode{};
+	dev_t rundev{};
+	ino_t runinode{};
+	dev_t cdev{};
+	ino_t cinode{};
+
 
     void preSpecialize(AppSpecializeArgs *args) {
 		unsigned int flags = api->getFlags();
@@ -261,27 +327,36 @@ private:
 			api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 			return;
 		}
+		auto fn = [this](std::string lib) {
+			auto di = devinoby(lib.c_str());
+			if (di) {
+				return *di;
+			} else {
+				LOGW("$[zygisk::PreSpecialize] devino[dl_iterate_phdr]: Failed to get device & inode for %s", lib.c_str());
+				LOGI("$[zygisk::PreSpecialize] Fallback to use `/proc/self/maps`");
+				return devinobymap(lib);
+			}
+		};
 		if ((whitelist && isuserapp(args->uid)) || flags & zygisk::StateFlag::PROCESS_ON_DENYLIST) {
 			pid_t pid = getpid();
 			cfd = api->connectCompanion(); // Companion FD
 			api->exemptFd(cfd);
-			auto di = devinoby("libandroid_runtime.so");
-			if (di) {
-				std::tie(dev, inode) = *di;
-			} else {
-				LOGW("$[zygisk::PreSpecialize] devino[dl_iterate_phdr]: Failed to get device & inode for libandroid_runtime.so");
-				LOGI("$[zygisk::PreSpecialize] Fallback to use `/proc/self/maps`");
-				std::tie(dev, inode) = devinobymap("libandroid_runtime.so");
-				if (!dev && !inode) {
-					LOGE("$[zygisk::PreSpecialize] devino[/proc/self/maps]: Failed to get device & inode for libandroid_runtime.so");
-					close(cfd);
-					api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
-					return;
-				}
+			std::tie(cdev, cinode) = fn("libc.so");
+			if (!cdev && !cinode) {
+				LOGE("$[zygisk::PreSpecialize] Failed to get device & inode for libc.so");
+				close(cfd);
+				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+				return;
 			}
-
-			api->pltHookRegister(dev, inode, "unshare", (void*) reshare, (void**) &ar_unshare);
-			api->pltHookRegister(dev, inode, "setresuid", (void*) resetresuid, (void**) &ar_setresuid);
+			std::tie(rundev, runinode) = fn("libandroid_runtime.so");
+			if (!rundev && !runinode) {
+				LOGE("$[zygisk::PreSpecialize] Failed to get device & inode for libandroid_runtime.so");
+				close(cfd);
+				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+				return;
+			}
+			api->pltHookRegister(rundev, runinode, "unshare", (void*) reshare, (void**) &ar_unshare);
+			api->pltHookRegister(rundev, runinode, "setresuid", (void*) resetresuid, (void**) &ar_setresuid);
 			api->pltHookCommit();
 			nocb = [pid, this]() { // Capture this for api access
 				nocb = []() {};
@@ -337,6 +412,8 @@ private:
 					return;
 				} else if (res == EXIT_FAILURE) {
 					LOGW("#[zygisk::PreSpecialize]: Companion failed, fallback to unmount in zygote process");
+					// We didn't make Mount Rule System yet supported in preAppSpecalize
+					// Because it's less often to come here
 					unmount(getMountInfo()); // Unmount in current (zygote) namespace as fallback
 				}
 
@@ -360,11 +437,11 @@ private:
 	void postSpecialize(const char *process) {
         // Unhook PLT hooks
 		if (ar_unshare) {
-			api->pltHookRegister(dev, inode, "unshare", (void*) ar_unshare, nullptr);
+			api->pltHookRegister(rundev, runinode, "unshare", (void*) ar_unshare, nullptr);
             ar_unshare = nullptr; // Clear pointer
         }
 		if (ar_setresuid) {
-			api->pltHookRegister(dev, inode, "setresuid", (void*) ar_setresuid, nullptr);
+			api->pltHookRegister(rundev, runinode, "setresuid", (void*) ar_setresuid, nullptr);
             ar_setresuid = nullptr; // Clear pointer
         }
 		api->pltHookCommit();
@@ -387,6 +464,7 @@ static void NoRoot(int fd) {
 		// Since this is static const it's only evaluated once per boot since companion won't exit
 		return f ? ([](std::ifstream& s){ std::string l; std::getline(s, l); return l; })(f) : "A Zygisk module to hide root.";
 	}();
+	static PropertyManager pm("/data/adb/modules/zygisk_nohello/module.prop");
 
 	static const bool compatbility = [] {
 		if (fs::exists("/data/adb/modules/zygisk_shamiko") && !fs::exists("/data/adb/modules/zygisk_shamiko/disable"))
@@ -398,28 +476,69 @@ static void NoRoot(int fd) {
 		return true;
 	}();
 
+	static const bool doesUmountPersists = []() {
+		return fs::exists("/data/adb/nohello/umount_persist") || fs::exists("/data/adb/nohello/umount_persists");
+	}();
+
+	static std::vector<MountRuleParser::MountRule> persistMountRules;
+	std::vector<MountRuleParser::MountRule> mountRules;
+
+	if (!doesUmountPersists) {
+		mountRules = MountRuleParser::parseMultipleRules([]() {
+			std::vector<std::string> rules;
+			std::ifstream f("/data/adb/nohello/umount");
+			if (f && f.is_open()) {
+				std::string line;
+				while (std::getline(f, line)) {
+					if (!line.empty())
+						rules.push_back(line);
+				}
+				f.close();
+			}
+			return rules;
+		}());
+	} else {
+		persistMountRules = MountRuleParser::parseMultipleRules([]() {
+			std::vector<std::string> rules;
+			std::ifstream f("/data/adb/nohello/umount");
+			if (f && f.is_open()) {
+				std::string line;
+				while (std::getline(f, line)) {
+					if (!line.empty())
+						rules.push_back(line);
+				}
+				f.close();
+			}
+			return rules;
+		}());
+	}
+
 	int result;
 	if (read(fd, &pid, sizeof(pid)) != sizeof(pid)) {
         LOGE("#[ps::Companion] Failed to read PID: %s", strerror(errno));
 		close(fd);
 		return;
 	}
-	PropertyManager pm("/data/adb/modules/zygisk_nohello/module.prop");
 	if (!compatbility) {
 		result = MODULE_CONFLICT;
 		pm.setProp("description", "[" + emoji::emojize(":x: ") + "Conflicting modules] " + description);
 		goto skip;
 	}
 	result = forkcall(
-		[pid]()
+		[pid, mountRules]()
 		{
 			int res = switchnsto(pid);
 			if (!res) { // switchnsto returns true on success (0 from setns)
-				LOGE("#[ps::Companion] setns failed for PID %d: %s", pid, strerror(errno));
+				LOGE("#[ps::Companion] Switch namespaces failed for PID %d: %s", pid, strerror(errno));
 				return EXIT_FAILURE;
 			}
 			auto mounts = getMountInfo();
-			unmount(mounts);
+			if (mountRules.empty())
+				unmount(mounts);
+			else if (!doesUmountPersists)
+				unmount(mountRules, mounts);
+			else
+				unmount(persistMountRules, mounts);
 			remount(mounts);
 			return EXIT_SUCCESS;
 		}
