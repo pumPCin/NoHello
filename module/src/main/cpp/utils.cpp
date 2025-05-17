@@ -121,8 +121,10 @@ bool switchnsto(pid_t pid) {
 		close(fd);
 		if (!res)
 			return true;
-		else
+		else {
+			LOGE("setns(procfd_open(%d, 0) -> %d, CLONE_NEWNS): %s", pid, fd, strerror(errno));
 			goto fallback;
+		}
 	} else {
 		LOGE("pidfd_open: %s", strerror(errno));
 	}
