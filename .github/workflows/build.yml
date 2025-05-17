@@ -42,9 +42,7 @@ jobs:
         id: prepareArtifact
         run: |
           releaseName=`ls module/release/Nohello-v*-release.zip | awk -F '(/|.zip)' '{print $3}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
-          debugName=`ls module/release/Nohello-v*-debug.zip | awk -F '(/|.zip)' '{print $3}'` && echo "debugName=$debugName" >> $GITHUB_OUTPUT
           unzip module/release/Nohello-v*-release.zip -d module-release
-          unzip module/release/Nohello-v*-debug.zip -d module-debug
 
       - name: Upload release
         uses: actions/upload-artifact@v4
