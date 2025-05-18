@@ -6,8 +6,8 @@
   <a href="https://github.com/MhmRdd/NoHello/actions/workflows/build.yml">
     <img src="https://github.com/MhmRdd/Il2Dump/actions/workflows/build.yml/badge.svg?branch=master" alt="Android CI status">
   </a>
-  <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
-    <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
   </a>
   </br>
   <a href="https://github.com/MhmRdd/NoHello/issues">Report Bug</a>
@@ -142,4 +142,5 @@ Don't forget to give the project a star! Thanks again!
 
 ## LICENSE
 
-This project is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
