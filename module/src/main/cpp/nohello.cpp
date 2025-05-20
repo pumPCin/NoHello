@@ -223,7 +223,8 @@ static void doumount(const std::string& mntPnt) {
 	errno = 0;
 	int res;
 	const char *mntpnt = mntPnt.c_str();
-	if ((res = umount2(mntpnt, MNT_DETACH)) == 0) {}
+	res = umount2(mntpnt, MNT_DETACH);
+	//if ((res = umount2(mntpnt, MNT_DETACH)) == 0)
 		//LOGD("umount2(\"%s\", MNT_DETACH): returned (0): 0 (Success)", mntpnt);
 	//else
 		//LOGE("umount2(\"%s\", MNT_DETACH): returned %d: %d (%s)", mntpnt, res, errno, strerror(errno));
@@ -263,7 +264,8 @@ static void remount(const std::vector<MountInfo>& mounts) {
 				flags |= MS_NOSYMFOLLOW;
 			}
 			int res;
-			if ((res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str())) == 0) {}
+			res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str());
+			//if ((res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str())) == 0)
 				//LOGD("mount(nullptr, \"/data\", nullptr, 0x%x, \"errors=%s\"): returned 0: 0 (Success)", flags, errors->c_str());
 			//else
 				//LOGW("mount(NULL, \"/data\", NULL, 0x%x, \"errors=%s\"): returned %d: %d (%s)", flags, errors->c_str(), res, errno, strerror(errno));
