@@ -16,7 +16,6 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
-//#include <android/log.h>
 #include <filesystem>
 #include <ranges>
 #include <vector>
@@ -30,10 +29,8 @@
 #include <sys/mount.h>
 #include <endian.h>
 #include <thread>
-//#include "log.h"
 #include "PropertyManager.cpp"
 #include "MountRuleParser.cpp"
-//#include "external/emoji.h"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -135,7 +132,6 @@ static std::pair<bool, bool> anomaly(const std::unique_ptr<FileDescriptorInfo> f
 				socket_name.find("apatchd") != std::string::npos || // For APatch daemon, common pattern
 				socket_name.find("apd") != std::string::npos      // APatch daemon
 					) {
-				//LOGD("Marking sensitive socket FD %d (%s) for sanitization.", fdi->fd, socket_name.c_str());
 				return {true, true};
 			}
 		}
@@ -149,7 +145,6 @@ static std::pair<bool, bool> anomaly(const std::unique_ptr<FileDescriptorInfo> f
 				fdi->file_path.find("magisk") != std::string::npos ||
 				fdi->file_path.find("kernelsu") != std::string::npos ||
 				fdi->file_path.find("apatch") != std::string::npos) {
-				//LOGD("Marking sensitive file FD %d (%s) for sanitization.", fdi->fd, fdi->file_path.c_str());
 				return {true, true};
 			}
 		}
@@ -224,10 +219,6 @@ static void doumount(const std::string& mntPnt) {
 	int res;
 	const char *mntpnt = mntPnt.c_str();
 	res = umount2(mntpnt, MNT_DETACH);
-	//if ((res = umount2(mntpnt, MNT_DETACH)) == 0)
-		//LOGD("umount2(\"%s\", MNT_DETACH): returned (0): 0 (Success)", mntpnt);
-	//else
-		//LOGE("umount2(\"%s\", MNT_DETACH): returned %d: %d (%s)", mntpnt, res, errno, strerror(errno));
 }
 
 static void remount(const std::vector<MountInfo>& mounts) {
@@ -265,10 +256,6 @@ static void remount(const std::vector<MountInfo>& mounts) {
 			}
 			int res;
 			res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str());
-			//if ((res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str())) == 0)
-				//LOGD("mount(nullptr, \"/data\", nullptr, 0x%x, \"errors=%s\"): returned 0: 0 (Success)", flags, errors->c_str());
-			//else
-				//LOGW("mount(NULL, \"/data\", NULL, 0x%x, \"errors=%s\"): returned %d: %d (%s)", flags, errors->c_str(), res, errno, strerror(errno));
 			break;
 		}
 	}
@@ -334,8 +321,6 @@ private:
 			if (di) {
 				return *di;
 			} else {
-				//LOGW("$[zygisk::PreSpecialize] devino[dl_iterate_phdr]: Failed to get device & inode for %s", lib.c_str());
-				//LOGI("$[zygisk::PreSpecialize] Fallback to use `/proc/self/maps`");
 				return devinobymap(lib);
 			}
 		};
@@ -345,14 +330,12 @@ private:
 			api->exemptFd(cfd);
 			std::tie(cdev, cinode) = fn("libc.so");
 			if (!cdev && !cinode) {
-				//LOGE("$[zygisk::PreSpecialize] Failed to get device & inode for libc.so");
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
 			}
 			std::tie(rundev, runinode) = fn("libandroid_runtime.so");
 			if (!rundev && !runinode) {
-				//LOGE("$[zygisk::PreSpecialize] Failed to get device & inode for libandroid_runtime.so");
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
@@ -364,13 +347,11 @@ private:
 				nocb = []() {};
                 std::vector<std::pair<std::unique_ptr<FileDescriptorInfo>, bool>> fdSanitizeList; // bool is shouldDetach
                 auto fds = GetOpenFds([](const std::string &error){
-                    //LOGE("#[zygisk::PreSpecialize] GetOpenFds: %s", error.c_str());
                 });
                 if (fds) {
                     for (auto &fd : *fds) {
                         if (fd == cfd) continue; // Skip companion FD itself
                         auto fdi = FileDescriptorInfo::CreateFromFd(fd, [fd](const std::string &error){
-                            //LOGE("#[zygisk::PreSpecialize] CreateFromFd(%d): %s", fd, error.c_str());
                         });
 						if (!fdi)
 							continue;
@@ -383,24 +364,20 @@ private:
 
 				int res = ar_unshare(CLONE_NEWNS);
 				if (res != 0) {
-					//LOGE("#[zygisk::PreSpecialize] ar_unshare: %s", strerror(errno));
 					// There's nothing we can do except returning
 					close(cfd);
 					return;
 				}
 				res = mount("rootfs", "/", nullptr, MS_SLAVE | MS_REC, nullptr);
 				if (res != 0) {
-					//LOGE("#[zygisk::PreSpecialize] mount(rootfs, \"/\", nullptr, MS_SLAVE | MS_REC, nullptr): returned %d: %d (%s)", res, errno, strerror(errno));
                     // There's nothing we can do except returning
 					close(cfd);
 					return;
 				}
 
 				if (write(cfd, &pid, sizeof(pid)) != sizeof(pid)) {
-					//LOGE("#[zygisk::PreSpecialize] write: [-> pid]: %s", strerror(errno));
 					res = EXIT_FAILURE; // Fallback to unmount from zygote
                 } else if (read(cfd, &res, sizeof(res)) != sizeof(res)) {
-					//LOGE("#[zygisk::PreSpecialize] read: [<- status]: %s", strerror(errno));
 					res = EXIT_FAILURE; // Fallback to unmount from zygote
 				}
 
@@ -413,7 +390,6 @@ private:
 					mount(nullptr, "/", nullptr, MS_SHARED | MS_REC, nullptr);
 					return;
 				} else if (res == EXIT_FAILURE) {
-					//LOGW("#[zygisk::PreSpecialize]: Companion failed, fallback to unmount in zygote process");
 					// We didn't make Mount Rule System yet supported in preAppSpecalize
 					// Because it's less often to come here
 					unmount(getMountInfo()); // Unmount in current (zygote) namespace as fallback
@@ -421,13 +397,10 @@ private:
 
                 // Sanitize FDs after companion communication and potential mount changes
                 for (auto &[fdi, shouldDetach] : fdSanitizeList) {
-					//LOGD("#[zygisk::PreSpecialize]: Sanitizing FD %d (path: %s, socket: %d), detach: %d",
-							fdi->fd, fdi->file_path.c_str(), fdi->is_sock, shouldDetach);
 					fdi->ReopenOrDetach([
 						fd = fdi->fd,
 						path = fdi->file_path // Capture path by value for lambda
 					](const std::string &error){
-						//LOGE("#[zygisk::PreSpecialize] Sanitize FD %d (%s): %s", fd, path.c_str(), error.c_str());
 					}, shouldDetach);
                 }
 			};
@@ -517,7 +490,6 @@ static void NoRoot(int fd) {
 
 	int result;
 	if (read(fd, &pid, sizeof(pid)) != sizeof(pid)) {
-        //LOGE("#[ps::Companion] Failed to read PID: %s", strerror(errno));
 		close(fd);
 		return;
 	}
@@ -531,7 +503,6 @@ static void NoRoot(int fd) {
 		{
 			int res = switchnsto(pid);
 			if (!res) { // switchnsto returns true on success (0 from setns)
-				//LOGE("#[ps::Companion] Switch namespaces failed for PID %d: %s", pid, strerror(errno));
 				return EXIT_FAILURE;
 			}
 			auto mounts = getMountInfo();
@@ -552,7 +523,6 @@ static void NoRoot(int fd) {
 	}
 	skip:
 	if (write(fd, &result, sizeof(result)) != sizeof(result)) {
-		//LOGE("#[ps::Companion] Failed to write result: %s", strerror(errno));
 	}
 	close(fd);
 }
