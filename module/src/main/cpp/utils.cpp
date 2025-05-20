@@ -14,7 +14,7 @@
 #include <sys/mman.h>
 #include <link.h>
 #include <sys/stat.h>
-#include "log.h"
+//#include "log.h"
 
 std::pair<dev_t, ino_t> devinobymap(const std::string& lib, bool useFind = false, unsigned int *ln = nullptr) {
 	std::ifstream maps("/proc/self/maps");
@@ -122,11 +122,11 @@ bool switchnsto(pid_t pid) {
 		if (!res)
 			return true;
 		else {
-			LOGE("setns(procfd_open(%d, 0) -> %d, CLONE_NEWNS): %s", pid, fd, strerror(errno));
+			//LOGE("setns(procfd_open(%d, 0) -> %d, CLONE_NEWNS): %s", pid, fd, strerror(errno));
 			goto fallback;
 		}
-	} else {
-		LOGE("pidfd_open: %s", strerror(errno));
+	//} else {
+		//LOGE("pidfd_open: %s", strerror(errno));
 	}
 	fallback:
 	std::string path = "/proc/" + std::to_string(pid) + "/ns/mnt";
@@ -135,8 +135,8 @@ bool switchnsto(pid_t pid) {
 		int res = setns(fd, CLONE_NEWNS);
 		close(fd);
 		return res == 0;
-	} else {
-		LOGE("open: %s", strerror(errno));
+	//} else {
+		//LOGE("open: %s", strerror(errno));
 	}
 	return false;
 }

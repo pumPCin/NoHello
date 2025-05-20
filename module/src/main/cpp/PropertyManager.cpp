@@ -2,7 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <utility>
-#include "log.h"
+//#include "log.h"
 
 PropertyManager::PropertyManager(std::string path) : filePath(std::move(path)) {
 	loadFromFile();
@@ -14,7 +14,7 @@ bool PropertyManager::loadFromFile() {
 
 	std::ifstream file(filePath);
 	if (!file.is_open()) {
-		LOGW("PropertyManager: Could not open %s for loading.", filePath.c_str());
+		//LOGW("PropertyManager: Could not open %s for loading.", filePath.c_str());
 		return false;
 	}
 
@@ -42,7 +42,7 @@ bool PropertyManager::loadFromFile() {
 bool PropertyManager::saveToFile() {
 	std::ofstream file(filePath, std::ios::trunc);
 	if (!file.is_open()) {
-		LOGE("PropertyManager: Could not open %s for saving.", filePath.c_str());
+		//LOGE("PropertyManager: Could not open %s for saving.", filePath.c_str());
 		return false;
 	}
 

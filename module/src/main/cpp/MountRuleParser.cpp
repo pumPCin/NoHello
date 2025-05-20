@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <string>
-#include "log.h"
+//#include "log.h"
 
 class MountRuleParser {
 public:
@@ -142,7 +142,7 @@ public:
 
 		auto sep = std::find(tokens.begin(), tokens.end(), "-");
 		if (sep == tokens.end() || std::distance(tokens.begin(), sep) < 6) {
-			LOGE("[MountRuleParser::parseMultipleRules]: Malformed mountinfo line");
+			//LOGE("[MountRuleParser::parseMultipleRules]: Malformed mountinfo line");
 			return {};
 		}
 
@@ -212,8 +212,8 @@ public:
 			MountRule rule = parseRuleString(text);
 			if (rule) {
 				rules.push_back(rule);
-			} else {
-				LOGE("[MountRuleParser::parseMultipleRules]: Failed to parse rule: `%s`", text.c_str());
+			//} else {
+				//LOGE("[MountRuleParser::parseMultipleRules]: Failed to parse rule: `%s`", text.c_str());
 			}
 		}
 		return rules;
