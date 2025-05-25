@@ -476,18 +476,14 @@ static void NoRoot(int fd) {
 				}
 				if (ppid != 1) continue;
 				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_ATTACH, %d, nullptr, nullptr): %s", pid,
-						 strerror(errno));
 					continue;
 				}
 				waitpid(pid, nullptr, 0);
 				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_SETOPTIONS, %d, nullptr, PTRACE_O_TRACEFORK): %s", pid, strerror(errno));
 					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
 					continue;
 				}
 				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_CONT, %d, nullptr, nullptr): %s", pid, strerror(errno));
 					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
 					continue;
 				}
@@ -498,11 +494,8 @@ static void NoRoot(int fd) {
 						if (status >> 16 == PTRACE_EVENT_FORK) {
 							unsigned long newChildPid = 0;
 							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
-							LOGD("#[ps::Companion] Fork detected (%d -> fork() -> %lu)", pid, newChildPid);
 							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
-							LOGD("#[ps::Companion] Detaching (%lu)", newChildPid);
 							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
-							LOGD("#[ps::Companion] Detaching (%d)", pid);
 							break;
 						} else {
 							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
@@ -524,18 +517,14 @@ static void NoRoot(int fd) {
 				}
 				if (ppid != 1) continue;
 				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_ATTACH, %d, nullptr, nullptr): %s", pid,
-						 strerror(errno));
 					continue;
 				}
 				waitpid(pid, nullptr, 0);
 				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_SETOPTIONS, %d, nullptr, PTRACE_O_TRACEFORK): %s", pid, strerror(errno));
 					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
 					continue;
 				}
 				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
-					LOGE("#[ps::Companion] ptrace(PTRACE_CONT, %d, nullptr, nullptr): %s", pid, strerror(errno));
 					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
 					continue;
 				}
@@ -546,11 +535,8 @@ static void NoRoot(int fd) {
 						if (status >> 16 == PTRACE_EVENT_FORK) {
 							unsigned long newChildPid = 0;
 							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
-							LOGD("#[ps::Companion] Fork detected (%d -> fork() -> %lu)", pid, newChildPid);
 							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
-							LOGD("#[ps::Companion] Detaching (%lu)", newChildPid);
 							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
-							LOGD("#[ps::Companion] Detaching (%d)", pid);
 							break;
 						} else {
 							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
