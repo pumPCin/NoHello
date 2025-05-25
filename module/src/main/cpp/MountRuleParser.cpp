@@ -160,7 +160,7 @@ public:
 		MountRule rule;
 		auto tokens = tokenizePreserveQuotes(ruleText);
 
-		enum Section { NONE, ROOT, POINT, FS, SOURCE } current = NONE;
+		enum Section { NONE, ROOT, POINT, FILESYSTEM, SOURCE } current = NONE;
 		enum State { WRITING, IDLE } state = IDLE;
 
 		for (std::string& word : tokens) {
@@ -168,7 +168,7 @@ public:
 				if (current == NONE) {
 					if (word == "root") current = ROOT;
 					else if (word == "point") current = POINT;
-					else if (word == "fs") current = FS;
+					else if (word == "fs") current = FILESYSTEM;
 					else if (word == "source") current = SOURCE;
 				} else if (word == "{") {
 					state = WRITING;
@@ -189,7 +189,7 @@ public:
 					case POINT:
 						rule.mountPointSubstrs.push_back(word);
 						break;
-					case FS:
+					case FILESYSTEM:
 						rule.fsTypes.insert(word);
 						break;
 					case SOURCE:

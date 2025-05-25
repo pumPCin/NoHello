@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/syscall.h>
+#include <sys/socket.h>
 #include <vector>
 #include <tuple>
 #include <cstdint>
@@ -88,6 +89,10 @@ int forkcall(const std::function<int()> &lambda)
 	return -1;
 }
 
+static inline int seccomp(int op, int fd, void *arg) {
+	return syscall(SYS_seccomp, op, fd, arg);
+}
+
 static int pidfd_open(pid_t pid, unsigned int flags)
 {
 	return syscall(SYS_pidfd_open, pid, flags);
@@ -142,4 +147,109 @@ bool isuserapp(int uid) {
 	if (appid >= AID_ISOLATED_START && appid <= AID_ISOLATED_END)
 		return true;
 	return false;
+}
+
+static int sendfd(int sockfd, int fd) {
+	int data;
+	struct iovec iov{};
+	struct msghdr msgh{};
+	struct cmsghdr *cmsgp;
+
+	/* Allocate a char array of suitable size to hold the ancillary data.
+	   However, since this buffer is in reality a 'struct cmsghdr', use a
+	   union to ensure that it is suitably aligned. */
+	union {
+		char buf[CMSG_SPACE(sizeof(int))];
+		/* Space large enough to hold an 'int' */
+		struct cmsghdr align;
+	} controlMsg{};
+
+	/* The 'msg_name' field can be used to specify the address of the
+	   destination socket when sending a datagram. However, we do not
+	   need to use this field because 'sockfd' is a connected socket. */
+
+	msgh.msg_name = nullptr;
+	msgh.msg_namelen = 0;
+
+	/* On Linux, we must transmit at least one byte of real data in
+	   order to send ancillary data. We transmit an arbitrary integer
+	   whose value is ignored by recvfd(). */
+
+	msgh.msg_iov = &iov;
+	msgh.msg_iovlen = 1;
+	iov.iov_base = &data;
+	iov.iov_len = sizeof(int);
+	data = 12345;
+
+	/* Set 'msghdr' fields that describe ancillary data */
+
+	msgh.msg_control = controlMsg.buf;
+	msgh.msg_controllen = sizeof(controlMsg.buf);
+
+	/* Set up ancillary data describing file descriptor to send */
+
+	cmsgp = reinterpret_cast<cmsghdr *>(msgh.msg_control);
+	cmsgp->cmsg_level = SOL_SOCKET;
+	cmsgp->cmsg_type = SCM_RIGHTS;
+	cmsgp->cmsg_len = CMSG_LEN(sizeof(int));
+	memcpy(CMSG_DATA(cmsgp), &fd, sizeof(int));
+
+	/* Send real plus ancillary data */
+
+	if (sendmsg(sockfd, &msgh, 0) == -1) return -1;
+
+	return 0;
+}
+
+static int recvfd(int sockfd) {
+	int data, fd;
+	ssize_t nr;
+	struct iovec iov{};
+	struct msghdr msgh{};
+
+	/* Allocate a char buffer for the ancillary data. See the comments
+	   in sendfd() */
+	union {
+		char buf[CMSG_SPACE(sizeof(int))];
+		struct cmsghdr align;
+	} controlMsg{};
+	struct cmsghdr *cmsgp;
+
+	/* The 'msg_name' field can be used to obtain the address of the
+	   sending socket. However, we do not need this information. */
+
+	msgh.msg_name = nullptr;
+	msgh.msg_namelen = 0;
+
+	/* Specify buffer for receiving real data */
+
+	msgh.msg_iov = &iov;
+	msgh.msg_iovlen = 1;
+	iov.iov_base = &data; /* Real data is an 'int' */
+	iov.iov_len = sizeof(int);
+
+	/* Set 'msghdr' fields that describe ancillary data */
+
+	msgh.msg_control = controlMsg.buf;
+	msgh.msg_controllen = sizeof(controlMsg.buf);
+
+	/* Receive real plus ancillary data; real data is ignored */
+
+	nr = recvmsg(sockfd, &msgh, 0);
+	if (nr == -1) return -1;
+
+	cmsgp = CMSG_FIRSTHDR(&msgh);
+
+	/* Check the validity of the 'cmsghdr' */
+
+	if (cmsgp == nullptr || cmsgp->cmsg_len != CMSG_LEN(sizeof(int)) ||
+		cmsgp->cmsg_level != SOL_SOCKET || cmsgp->cmsg_type != SCM_RIGHTS) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	/* Return the received file descriptor to our caller */
+
+	memcpy(&fd, CMSG_DATA(cmsgp), sizeof(int));
+	return fd;
 }
