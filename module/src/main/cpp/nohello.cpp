@@ -557,7 +557,7 @@ static void NoRoot(int fd) {
 
 	int result = compatbility;
 	if (result == MODULE_CONFLICT) {
-		pm.setProp("description", "[" + emoji::emojize(":warning: ") + "Conflicting modules] " + description);
+		pm.setProp("description", "[\U0000274C Conflicting modules] " + description);
 		if (write(fd, &result, sizeof(result)) != sizeof(result)) {
 		}
 		close(fd);
