@@ -210,7 +210,6 @@ public:
 			MountRule rule = parseRuleString(text);
 			if (rule) {
 				rules.push_back(rule);
-			} else {
 			}
 		}
 		return rules;
