@@ -1,3 +1,2 @@
 source { "KSU", "APatch", "magisk", "worker" } fs { "tmpfs" "overlay" }
-point {"/system/etc/hosts"}
-
+point { "/system/etc/hosts" }
