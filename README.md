@@ -18,7 +18,7 @@
 </p>
 
 > [!NOTE]
-> This module currently focuses to hide root from apps and **NOT** zygisk.
+> This module currently focuses to hide root & zygisk from apps.
 > Updates will gradually implements changes and fixes.
 
 ## About The Project
@@ -27,18 +27,25 @@ Using the **release** build is recommended over the debug build. Only use debug 
 
 ## Usage
 
-### KernelSU & APatch users:
-1. Install ZygiskNext.
-2. Make sure the unmount setting is enabled for the target app in the KernelSU/APatch Manager.
-3. Disable `Enforce DenyList` in ZygiskNext settings if there is one.
+### KernelSU & KernelSU Next users:
+1. Install ZygiskNext or ReZygisk.
+2. Make sure the unmount setting is enabled for the target app in the Manager.
+3. Disable Umount modules in settings for Manager (if exists).
+4. Disable `Enforce DenyList` in ZygiskNext/ReZygisk settings if there is one.
+
+### APatch users:
+1. Install ZygiskNext or ReZygisk.
+2. Make sure the unmount setting is enabled for the target app in the Manager.
+3. Disable `Enforce DenyList` in ZygiskNext/ReZygisk settings if there is one.
 
 ### Magisk users:
 1. Update your Magisk to 28.0 or newer for better hiding capabilities. (optional)
-2. Turn on Zygisk in Magisk settings.
+2. Turn on Zygisk in Magisk settings (unrecommended) or install ZygiskNext/ReZygisk.
 3. Turn off `Enforce DenyList` in Magisk settings.
-4. Add the target app to the deny list unless you're using a Magisk fork with a white list instead.
+4. Disable `Enforce DenyList` in ZygiskNext/ReZygisk settings if there is one. (if installed)
+5. Add the target app to the deny list unless you're using a Magisk fork with a white list instead.
 
-## Whitelisting
+## Whitelisting (0.0.4+)
 You can set the working mode to **whitelist** (instead of the default **blacklist**) by creating an empty regular file `/data/adb/nohello/whitelist`.
 >[!WARNING]
 > Using **Mount Rule System** with **whitelist**, can cause severe overheating & performance issues, due to how MRS being evaluated each time a process spawns.
@@ -62,12 +69,12 @@ A rule is made up of **sections**, each consisting of a **keyword**, followed by
 
 Valid **keywords** are:
 
-| Keyword  | Matches against         | Supports Wildcards | Description |
-|----------|-------------------------|---------------------|-------------|
-| `root`   | Root path of the mount  | Yes (`*`, escape by `\*`)     | Root of the mount in `/proc/self/mountinfo` |
-| `point`  | Mount point path        | Yes                 | Where the filesystem is mounted |
-| `fs`     | Filesystem type         | No                  | Matches exact filesystem type, e.g. `ext4`, `erofs`, etc |
-| `source` | Source device or file   | Yes (`*`, no escape)           | e.g., `/dev/block/xyz`, `magisk`, etc |
+| Keyword  | Matches against         | Supports Wildcards                                       | Description |
+|----------|-------------------------|----------------------------------------------------------|-------------|
+| `root`   | Root path of the mount  | Yes (`*`, escape by `\*`)                                | Root of the mount in `/proc/self/mountinfo` |
+| `point`  | Mount point path        | Yes (`*`, escape by `\*` only at the beginning & ending) | Where the filesystem is mounted |
+| `fs`     | Filesystem type         | No                                                       | Matches exact filesystem type, e.g. `ext4`, `erofs`, etc |
+| `source` | Source device or file   | Yes (`*`, escape by `\*`)                                | e.g., `/dev/block/xyz`, `magisk`, etc |
 
 ### Example Rules
 
@@ -110,7 +117,7 @@ You may escape characters like `*`, `{`, `}`, and `"` using backslashes (`\`) if
 
 Wildcards are supported only in `root`, `point`, and `source`. The supported patterns are:
 
-- `*value*`: matches substring anywhere (except `root`, `point`)
+- `*value*`: matches substring anywhere
 - `*value`: matches suffix
 - `value*`: matches prefix
 - Exact match without `*`
