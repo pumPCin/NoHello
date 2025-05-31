@@ -15,6 +15,9 @@
 #include <sys/mman.h>
 #include <link.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
+#include <linux/version.h>
+#include <dirent.h>
 
 std::pair<dev_t, ino_t> devinobymap(const std::string& lib, bool useFind = false, unsigned int *ln = nullptr) {
 	std::ifstream maps("/proc/self/maps");
@@ -67,6 +70,42 @@ std::optional<std::pair<dev_t, ino_t>> devinoby(const char* lib) {
 			}
 		}
 		return 0; // Continue
+	}, &state);
+
+	return state.result;
+}
+
+std::optional<std::pair<void*, size_t>> robaseby(dev_t dev, ino_t ino) {
+	struct State {
+		dev_t dev;
+		ino_t ino;
+		std::optional<std::pair<void*, size_t>> result;
+	} state = { dev, ino };
+
+	dl_iterate_phdr([](struct dl_phdr_info* info, size_t, void* data) -> int {
+		auto* s = static_cast<State*>(data);
+
+		struct stat st{};
+		if (stat(info->dlpi_name, &st) != 0)
+			return 0;
+
+		if (st.st_dev != s->dev || st.st_ino != s->ino)
+			return 0;
+
+		for (int i = 0; i < info->dlpi_phnum; ++i) {
+			const auto& phdr = info->dlpi_phdr[i];
+			if (phdr.p_type == PT_LOAD &&
+				(phdr.p_flags & PF_R) &&
+				!(phdr.p_flags & PF_X)) // r--p only
+			{
+				uintptr_t base = info->dlpi_addr + phdr.p_vaddr;
+				size_t size = phdr.p_memsz;
+				s->result = std::make_pair(reinterpret_cast<void*>(base), size);
+				return 1; // Stop searching
+			}
+		}
+
+		return 0;
 	}, &state);
 
 	return state.result;
@@ -252,4 +291,129 @@ static int recvfd(int sockfd) {
 
 	memcpy(&fd, CMSG_DATA(cmsgp), sizeof(int));
 	return fd;
+}
+
+static int getKernelVersion() {
+	struct utsname un{};
+	if (uname(&un) != 0) {
+		return 0;
+	}
+	int kmaj = 0, kmin = 0, kpatch = 0;
+	sscanf(un.release, "%d.%d.%d", &kmaj, &kmin, &kpatch);
+	return KERNEL_VERSION(kmaj, kmin, kpatch);
+}
+
+template <typename T>
+bool xwrite(int fd, const T& data) {
+	uint64_t size = sizeof(T);
+	if (write(fd, &size, sizeof(size)) != sizeof(size)) {
+		return false;
+	}
+	if (write(fd, data.data(), size) != static_cast<ssize_t>(size)) {
+		return false;
+	}
+	return true;
+}
+
+template<>
+bool xwrite<std::string>(int fd, const std::string& data) {
+	uint64_t size = data.size();
+	if (write(fd, &size, sizeof(size)) != sizeof(size)) {
+		return false;
+	}
+	if (write(fd, data.data(), size) != static_cast<ssize_t>(size)) {
+		return false;
+	}
+	return true;
+}
+
+bool xwrite(int fd, const char* data) {
+	if (!data) return false;
+	return xwrite(fd, std::string(data));
+}
+
+template <>
+bool xwrite<bool>(int fd, const bool& data) {
+	uint64_t size = sizeof(bool);
+	if (write(fd, &size, sizeof(size)) != sizeof(size)) {
+		return false;
+	}
+	uint8_t byteData = data ? 1 : 0;
+	if (write(fd, &byteData, sizeof(byteData)) != sizeof(byteData)) {
+		return false;
+	}
+	return true;
+}
+
+template <>
+bool xwrite<uintptr_t>(int fd, const uintptr_t& data) {
+	uint64_t size = sizeof(uintptr_t);
+	if (write(fd, &size, sizeof(size)) != sizeof(size)) {
+		return false;
+	}
+	if (write(fd, &data, size) != size) {
+		return false;
+	}
+	return true;
+}
+
+template <typename T>
+std::unique_ptr<T> xread(int fd) {
+	uint64_t size = 0;
+	if (read(fd, &size, sizeof(size)) != sizeof(size)) {
+		return nullptr;
+	}
+	if (size != sizeof(T)) {
+		return nullptr;
+	}
+	auto data = std::make_unique<T>();
+	if (read(fd, data.get(), size) != static_cast<ssize_t>(size)) {
+		return nullptr;
+	}
+	return data;
+}
+
+template<>
+std::unique_ptr<std::string> xread<std::string>(int fd) {
+	uint64_t size = 0;
+	if (read(fd, &size, sizeof(size)) != sizeof(size)) {
+		return nullptr;
+	}
+	auto data = std::make_unique<std::string>(size, '\0');
+	if (read(fd, data->data(), size) != static_cast<ssize_t>(size)) {
+		return nullptr;
+	}
+	return data;
+}
+
+template <>
+std::unique_ptr<bool> xread<bool>(int fd) {
+	uint64_t size = 0;
+	if (read(fd, &size, sizeof(size)) != sizeof(size)) {
+		return nullptr;
+	}
+	if (size != sizeof(bool)) {
+		return nullptr;
+	}
+	uint8_t byteData = 0;
+	if (read(fd, &byteData, sizeof(byteData)) != sizeof(byteData)) {
+		return nullptr;
+	}
+	return std::make_unique<bool>(byteData != 0);
+}
+
+template <>
+std::unique_ptr<uintptr_t> xread<uintptr_t>(int fd) {
+	uint64_t size = 0;
+	if (read(fd, &size, sizeof(size)) != sizeof(size)) {
+		return nullptr;
+	}
+	if (size != sizeof(uintptr_t)) {
+		return nullptr;
+	}
+	uintptr_t data = 0;
+	if (read(fd, &data, size) != size) {
+		return nullptr;
+	}
+	return std::make_unique<uintptr_t>(data);
 }

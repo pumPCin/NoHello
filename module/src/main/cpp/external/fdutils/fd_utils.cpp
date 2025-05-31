@@ -90,7 +90,7 @@ std::unique_ptr<FileDescriptorInfo> FileDescriptorInfo::CreateFromFd(int fd, fai
 		} else if (S_ISFIFO(f_stat.st_mode)) {
 			mode = "FIFO";
 		}
-		fail_fn(android::base::StringPrintf("Unsupported st_mode for FD %d:  %s", fd, mode.c_str()));
+		fail_fn(android::base::StringPrintf("Unsupported st_mode for FD %d:  %d(%s)", fd, f_stat.st_mode, mode.c_str()));
 		return {};
 	}
 	std::string file_path;
