@@ -287,8 +287,8 @@ static void remount(const std::vector<MountInfo>& mounts) {
 int (*ar_unshare)(int) = nullptr;
 
 static int reshare(int flags) {
-	errno = 0;
-	return flags == CLONE_NEWNS ? 0 : ar_unshare(flags & ~CLONE_NEWNS);
+    errno = 0;
+    return ar_unshare(flags & ~(CLONE_NEWNS | CLONE_NEWCGROUP));
 }
 
 class NoHello : public zygisk::ModuleBase {
@@ -419,7 +419,7 @@ private:
 				}
 			}
 
-			int res = unshare(CLONE_NEWNS);
+			int res = unshare(CLONE_NEWNS | CLONE_NEWCGROUP);
 			if (res != 0) {
 				LOGE("#[zygisk::preSpecialize] unshare: %s", strerror(errno));
 				// There's nothing we can do except returning
@@ -618,7 +618,7 @@ static void NoRoot(int fd) {
 	result = forkcall(
 		[pid]()
 		{
-			int res = switchnsto(pid);
+			int res = nscg2(pid);
 			if (!res) { // switchnsto returns true on success (0 from setns)
 				LOGE("#[ps::Companion] Switch namespaces failed for PID %d: %s", pid, strerror(errno));
 				return FAILURE;

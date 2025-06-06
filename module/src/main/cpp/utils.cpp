@@ -158,32 +158,77 @@ static ssize_t process_vm_writev(pid_t pid,
 	return syscall(SYS_process_vm_writev, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
 }
 
-bool switchnsto(pid_t pid) {
-	int fd = pidfd_open(pid, 0);
-	if (fd != -1) {
-		int res = setns(fd, CLONE_NEWNS);
-		close(fd);
-		if (!res)
-			return true;
-		else {
-			LOGE("setns(procfd_open(%d, 0) -> %d, CLONE_NEWNS): %s", pid, fd, strerror(errno));
-			goto fallback;
-		}
-	} else {
-		LOGE("pidfd_open: %s", strerror(errno));
-	}
-	fallback:
-	std::string path = "/proc/" + std::to_string(pid) + "/ns/mnt";
-	fd = open(path.c_str(), O_RDONLY);
-	if (fd != -1) {
-		int res = setns(fd, CLONE_NEWNS);
-		close(fd);
-		return res == 0;
-	} else {
-		LOGE("open: %s", strerror(errno));
-	}
-	return false;
+bool nscg2(pid_t pid) {
+    int pidfd = pidfd_open(pid, 0);
+    if (pidfd != -1) {
+        int res = -1;
+        int mntfd = openat(pidfd, "ns/mnt", O_RDONLY);
+        if (mntfd == -1) {
+            LOGE("openat(pidfd_open(%d, 0) -> %d, \"ns/mnt\", O_RDONLY): %s", pid, pidfd, strerror(errno));
+            goto fallback_mnt;
+        }
+        res = setns(mntfd, CLONE_NEWNS);
+        if (res) {
+            LOGE("setns(openat(pidfd_open(%d, 0), \"ns/mnt\") -> %d, CLONE_NEWNS): %s", pid, mntfd, strerror(errno));
+            close(mntfd);
+            goto fallback_mnt;
+        }
+        close(mntfd);
+
+        int cgfd = openat(pidfd, "ns/cgroup", O_RDONLY);
+        if (cgfd == -1) {
+            LOGE("openat(pidfd_open(%d, 0) -> %d, \"ns/cgroup\", O_RDONLY): %s", pid, pidfd, strerror(errno));
+            goto fallback_cg;
+        }
+        res = setns(cgfd, CLONE_NEWCGROUP);
+        if (res) {
+            LOGE("setns(openat(pidfd_open(%d, 0), \"ns/cgroup\") -> %d, CLONE_NEWCGROUP): %s", pid, cgfd, strerror(errno));
+            close(cgfd);
+            goto fallback_cg;
+        }
+        close(cgfd);
+        close(pidfd);
+        return true;
+    } else {
+        LOGE("pidfd_open(%d): %s", pid, strerror(errno));
+    }
+fallback_mnt:
+    {
+        std::string mntPath = "/proc/" + std::to_string(pid) + "/ns/mnt";
+        int mntfd_fallback = open(mntPath.c_str(), O_RDONLY);
+        if (mntfd_fallback != -1) {
+            int res = setns(mntfd_fallback, CLONE_NEWNS);
+            if (res) {
+                LOGE("setns(open(\"%s\") -> %d, CLONE_NEWNS): %s", mntPath.c_str(), mntfd_fallback, strerror(errno));
+                close(mntfd_fallback);
+                return false;
+            }
+            close(mntfd_fallback);
+        } else {
+            LOGE("open(\"%s\"): %s", mntPath.c_str(), strerror(errno));
+            return false;
+        }
+    }
+fallback_cg:
+    {
+        std::string cgPath = "/proc/" + std::to_string(pid) + "/ns/cgroup";
+        int cgfd_fallback = open(cgPath.c_str(), O_RDONLY);
+        if (cgfd_fallback != -1) {
+            int res = setns(cgfd_fallback, CLONE_NEWCGROUP);
+            if (res) {
+                LOGE("setns(open(\"%s\") -> %d, CLONE_NEWCGROUP): %s", cgPath.c_str(), cgfd_fallback, strerror(errno));
+                close(cgfd_fallback);
+                return false;
+            }
+            close(cgfd_fallback);
+        } else {
+            LOGE("open(\"%s\"): %s", cgPath.c_str(), strerror(errno));
+            return false;
+        }
+    }
+    return true;
 }
+
 
 bool isuserapp(int uid) {
 	int appid = uid % AID_USER_OFFSET;
