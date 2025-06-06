@@ -161,38 +161,17 @@ static ssize_t process_vm_writev(pid_t pid,
 bool nscg2(pid_t pid) {
     int pidfd = pidfd_open(pid, 0);
     if (pidfd != -1) {
-        int res = -1;
-        int mntfd = openat(pidfd, "ns/mnt", O_RDONLY);
-        if (mntfd == -1) {
-            LOGE("openat(pidfd_open(%d, 0) -> %d, \"ns/mnt\", O_RDONLY): %s", pid, pidfd, strerror(errno));
-            goto fallback_mnt;
-        }
-        res = setns(mntfd, CLONE_NEWNS);
-        if (res) {
-            LOGE("setns(openat(pidfd_open(%d, 0), \"ns/mnt\") -> %d, CLONE_NEWNS): %s", pid, mntfd, strerror(errno));
-            close(mntfd);
-            goto fallback_mnt;
-        }
-        close(mntfd);
-
-        int cgfd = openat(pidfd, "ns/cgroup", O_RDONLY);
-        if (cgfd == -1) {
-            LOGE("openat(pidfd_open(%d, 0) -> %d, \"ns/cgroup\", O_RDONLY): %s", pid, pidfd, strerror(errno));
-            goto fallback_cg;
-        }
-        res = setns(cgfd, CLONE_NEWCGROUP);
-        if (res) {
-            LOGE("setns(openat(pidfd_open(%d, 0), \"ns/cgroup\") -> %d, CLONE_NEWCGROUP): %s", pid, cgfd, strerror(errno));
-            close(cgfd);
-            goto fallback_cg;
-        }
-        close(cgfd);
+        int res = setns(pidfd, 0);
         close(pidfd);
+        if (res) {
+            LOGE("setns(pidfd_open(%d, 0) -> %d (closed), 0): %s", pid, mntfd, strerror(errno));
+            goto fallback;
+        }
         return true;
     } else {
         LOGE("pidfd_open(%d): %s", pid, strerror(errno));
     }
-fallback_mnt:
+fallback:
     {
         std::string mntPath = "/proc/" + std::to_string(pid) + "/ns/mnt";
         int mntfd_fallback = open(mntPath.c_str(), O_RDONLY);
@@ -209,7 +188,6 @@ fallback_mnt:
             return false;
         }
     }
-fallback_cg:
     {
         std::string cgPath = "/proc/" + std::to_string(pid) + "/ns/cgroup";
         int cgfd_fallback = open(cgPath.c_str(), O_RDONLY);
