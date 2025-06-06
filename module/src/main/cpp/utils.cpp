@@ -157,27 +157,49 @@ static ssize_t process_vm_writev(pid_t pid,
 	return syscall(SYS_process_vm_writev, pid, local_iov, liovcnt, remote_iov, riovcnt, flags);
 }
 
-bool switchnsto(pid_t pid) {
-	int fd = pidfd_open(pid, 0);
-	if (fd != -1) {
-		int res = setns(fd, CLONE_NEWNS);
-		close(fd);
-		if (!res)
-			return true;
-		else {
-			goto fallback;
-		}
-	}
-	fallback:
-	std::string path = "/proc/" + std::to_string(pid) + "/ns/mnt";
-	fd = open(path.c_str(), O_RDONLY);
-	if (fd != -1) {
-		int res = setns(fd, CLONE_NEWNS);
-		close(fd);
-		return res == 0;
-	}
-	return false;
+bool nscg2(pid_t pid) {
+    int pidfd = pidfd_open(pid, 0);
+    if (pidfd != -1) {
+    	// https://man7.org/linux/man-pages/man2/setns.2.html
+        int res = setns(pidfd, CLONE_NEWNS | CLONE_NEWCGROUP);
+        close(pidfd);
+        if (res) {
+            goto fallback;
+        }
+        return true;
+    }
+fallback:
+    {
+        std::string mntPath = "/proc/" + std::to_string(pid) + "/ns/mnt";
+        int mntfd_fallback = open(mntPath.c_str(), O_RDONLY);
+        if (mntfd_fallback != -1) {
+            int res = setns(mntfd_fallback, CLONE_NEWNS);
+            if (res) {
+                close(mntfd_fallback);
+                return false;
+            }
+            close(mntfd_fallback);
+        } else {
+            return false;
+        }
+    }
+    {
+        std::string cgPath = "/proc/" + std::to_string(pid) + "/ns/cgroup";
+        int cgfd_fallback = open(cgPath.c_str(), O_RDONLY);
+        if (cgfd_fallback != -1) {
+            int res = setns(cgfd_fallback, CLONE_NEWCGROUP);
+            if (res) {
+                close(cgfd_fallback);
+                return false;
+            }
+            close(cgfd_fallback);
+        } else {
+            return false;
+        }
+    }
+    return true;
 }
+
 
 bool isuserapp(int uid) {
 	int appid = uid % AID_USER_OFFSET;
