@@ -161,10 +161,11 @@ static ssize_t process_vm_writev(pid_t pid,
 bool nscg2(pid_t pid) {
     int pidfd = pidfd_open(pid, 0);
     if (pidfd != -1) {
-        int res = setns(pidfd, 0);
+    	// https://man7.org/linux/man-pages/man2/setns.2.html
+        int res = setns(pidfd, CLONE_NEWNS | CLONE_NEWCGROUP);
         close(pidfd);
         if (res) {
-            LOGE("setns(pidfd_open(%d, 0) -> %d (closed), 0): %s", pid, mntfd, strerror(errno));
+            LOGE("setns(pidfd_open(%d, 0) -> %d (closed), 0): %s", pid, pidfd, strerror(errno));
             goto fallback;
         }
         return true;
