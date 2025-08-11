@@ -481,8 +481,6 @@ static void NoRoot(int fd) {
 	static PropertyManager pm("/data/adb/modules/zygisk_nohello/module.prop");
 
 	static const int compatbility = [] {
-		if (fs::exists("/data/adb/modules/zygisk_shamiko") && !fs::exists("/data/adb/modules/zygisk_shamiko/disable"))
-			return MODULE_CONFLICT;
 		if (fs::exists("/data/adb/modules/zygisk-assistant") && !fs::exists("/data/adb/modules/zygisk-assistant/disable"))
 			return MODULE_CONFLICT;
 		if (fs::exists("/data/adb/modules/treat_wheel") && !fs::exists("/data/adb/modules/treat_wheel/disable"))
@@ -495,6 +493,103 @@ static void NoRoot(int fd) {
 	static const bool doesUmountPersists = []() {
 		return fs::exists("/data/adb/nohello/umount_persist") || fs::exists("/data/adb/nohello/umount_persists");
 	}();
+
+	static const int cleanSignal = forkcall([]() {
+		bool z64 = false, z32 = false;
+		for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+			if (!entry.is_directory())
+				continue;
+			std::string name = entry.path().filename();
+			if (!std::all_of(name.begin(), name.end(), ::isdigit)) continue;
+			auto pid = static_cast<pid_t>(std::stoi(name));
+			std::ifstream cmdline(entry.path() / "cmdline");
+			std::string cmd;
+			std::getline(cmdline, cmd, '\0');
+			if (cmd == "zygote64") {
+				std::ifstream statusFile(("/proc/" + std::to_string(pid) + "/status"));
+				std::string line;
+				pid_t ppid = -1;
+				while (std::getline(statusFile, line)) {
+					if (line.rfind("PPid:", 0) == 0) {
+						ppid = std::stoi(line.substr(5));
+						break;
+					}
+				}
+				if (ppid != 1) continue;
+				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
+					continue;
+				}
+				waitpid(pid, nullptr, 0);
+				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				while (true) {
+					int status = 0;
+					pid_t eventPid = waitpid(-1, &status, 0);
+					if (WIFSTOPPED(status)) {
+						if (status >> 16 == PTRACE_EVENT_FORK) {
+							unsigned long newChildPid = 0;
+							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
+							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
+							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+							break;
+						} else {
+							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
+						}
+					}
+				}
+				z64 = true;
+				continue;
+			}
+			if (cmd == "zygote32") {
+				std::ifstream statusFile(("/proc/" + std::to_string(pid) + "/status"));
+				std::string line;
+				pid_t ppid = -1;
+				while (std::getline(statusFile, line)) {
+					if (line.rfind("PPid:", 0) == 0) {
+						ppid = std::stoi(line.substr(5));
+						break;
+					}
+				}
+				if (ppid != 1) continue;
+				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
+					continue;
+				}
+				waitpid(pid, nullptr, 0);
+				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				while (true) {
+					int status = 0;
+					pid_t eventPid = waitpid(-1, &status, 0);
+					if (WIFSTOPPED(status)) {
+						if (status >> 16 == PTRACE_EVENT_FORK) {
+							unsigned long newChildPid = 0;
+							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
+							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
+							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+							break;
+						} else {
+							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
+						}
+					}
+				}
+				z32 = true;
+				continue;
+			}
+		}
+		return z64 || z32;
+	});
 
 	static std::vector<std::string> stringRules;
 	static std::vector<MountRuleParser::MountRule> mountRules;
