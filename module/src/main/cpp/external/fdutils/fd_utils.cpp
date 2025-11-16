@@ -30,7 +30,6 @@
 #include <cerrno> // For errno
 #include <cstring> // For strerror
 #include "stringprintf.cpp"
-#include "../../../log.h" // For LOGD
 
 static const char kFdPath[] = "/proc/self/fd";
 
@@ -174,18 +173,15 @@ void FileDescriptorInfo::Detach(fail_fn_t fail_fn) const {
 void FileDescriptorInfo::ReopenOrDetach(fail_fn_t fail_fn, bool prefer_detach_to_dev_null) const {
     if (is_sock) {
         // Sockets are always "detached" by replacing their FD with /dev/null.
-        LOGD("Detaching socket FD %d to /dev/null", fd);
         return Detach(fail_fn);
     }
 
     // For non-sockets:
     if (prefer_detach_to_dev_null) {
-        LOGD("Detaching non-socket FD %d (path: %s) to /dev/null due to preference.", fd, file_path.c_str());
         return Detach(fail_fn);
     }
 
     // Original logic for reopening regular files if not detaching.
-    LOGD("Reopening non-socket FD %d (path: %s) normally.", fd, file_path.c_str());
 	// NOTE: This might happen if the file was unlinked after being opened.
 	// It's a common pattern in the case of temporary files and the like but
 	// we should not allow such usage from the zygote.
