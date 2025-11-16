@@ -16,7 +16,6 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <fcntl.h>
-#include <android/log.h>
 #include <filesystem>
 #include <ranges>
 #include <vector>
@@ -31,10 +30,8 @@
 #include <sys/ptrace.h>
 #include <endian.h>
 #include <thread>
-#include "log.h"
 #include "PropertyManager.cpp"
 #include "MountRuleParser.cpp"
-#include "external/emoji.h"
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -147,7 +144,6 @@ static std::pair<bool, bool> anomaly(const std::unique_ptr<FileDescriptorInfo> f
 				socket_name.find("apatchd") != std::string::npos || // For APatch daemon, common pattern
 				socket_name.find("apd") != std::string::npos      // APatch daemon
 					) {
-				LOGD("Marking sensitive socket FD %d (%s) for sanitization.", fdi->fd, socket_name.c_str());
 				return {true, true};
 			}
 		}
@@ -161,7 +157,6 @@ static std::pair<bool, bool> anomaly(const std::unique_ptr<FileDescriptorInfo> f
 				fdi->file_path.find("magisk") != std::string::npos ||
 				fdi->file_path.find("kernelsu") != std::string::npos ||
 				fdi->file_path.find("apatch") != std::string::npos) {
-				LOGD("Marking sensitive file FD %d (%s) for sanitization.", fdi->fd, fdi->file_path.c_str());
 				return {true, true};
 			}
 		}
@@ -235,10 +230,7 @@ static void doumount(const std::string& mntPnt) {
 	errno = 0;
 	int res;
 	const char *mntpnt = mntPnt.c_str();
-	if ((res = umount2(mntpnt, MNT_DETACH)) == 0)
-		LOGD("umount2(\"%s\", MNT_DETACH): returned (0): 0 (Success)", mntpnt);
-	else
-		LOGE("umount2(\"%s\", MNT_DETACH): returned %d: %d (%s)", mntpnt, res, errno, strerror(errno));
+	res = umount2(mntpnt, MNT_DETACH);
 }
 
 static void remount(const std::vector<MountInfo>& mounts) {
@@ -275,10 +267,7 @@ static void remount(const std::vector<MountInfo>& mounts) {
 				flags |= MS_NOSYMFOLLOW;
 			}
 			int res;
-			if ((res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str())) == 0)
-				LOGD("mount(nullptr, \"/data\", nullptr, 0x%x, \"errors=%s\"): returned 0: 0 (Success)", flags, errors->c_str());
-			else
-				LOGW("mount(NULL, \"/data\", NULL, 0x%x, \"errors=%s\"): returned %d: %d (%s)", flags, errors->c_str(), res, errno, strerror(errno));
+			res = ::mount(nullptr, "/data", nullptr, flags, (std::string("errors=") + *errors).c_str());
 			break;
 		}
 	}
@@ -336,8 +325,6 @@ private:
 			if (di) {
 				return *di;
 			} else {
-				LOGW("#[zygisk::?] devino[dl_iterate_phdr]: Failed to get device & inode for %s", lib.c_str());
-				LOGI("#[zygisk::?] Fallback to use `/proc/self/maps`");
 				return devinobymap(lib);
 			}
 		};
@@ -346,14 +333,12 @@ private:
 			cfd = api->connectCompanion(); // Companion FD
 			api->exemptFd(cfd);
 			if (write(cfd, &ppid, sizeof(ppid)) != sizeof(ppid)) {
-				LOGE("#[zygisk::preSpecialize] write: [-> ppid]: %s", strerror(errno));
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
 			}
 			int advice;
 			if (read(cfd, &advice, sizeof(advice)) != sizeof(advice)) {
-				LOGE("#[zygisk::preSpecialize] read: [<- status]: %s", strerror(errno));
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
@@ -365,14 +350,12 @@ private:
 			}
 			std::tie(cdev, cinode) = fn("libc.so");
 			if (!cdev && !cinode) {
-				LOGE("#[zygisk::preSpecialize] Failed to get device & inode for libc.so");
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
 			}
 			std::tie(rundev, runinode) = fn("libandroid_runtime.so");
 			if (!rundev && !runinode) {
-				LOGE("#[zygisk::preSpecialize] Failed to get device & inode for libandroid_runtime.so");
 				close(cfd);
 				api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
 				return;
@@ -396,19 +379,15 @@ private:
 					}
 					mprotect(base, alignedSize, PROT_READ);
 					madvise(base, alignedSize, MADV_REMOVE);
-				} else {
-					LOGW("#[zygisk::preSpecialize] Failed to get ro block for libandroid_runtime.so");
 				}
 			}
 			std::vector<std::pair<std::unique_ptr<FileDescriptorInfo>, bool>> fdSanitizeList; // bool is shouldDetach
 			auto fds = GetOpenFds([](const std::string &error){
-				LOGE("#[zygisk::preSpecialize] GetOpenFds: %s", error.c_str());
 			});
 			if (fds) {
 				for (auto &fd : *fds) {
 					if (fd == cfd) continue; // Skip companion FD itself
 					auto fdi = FileDescriptorInfo::CreateFromFd(fd, [fd](const std::string &error){
-						LOGE("#[zygisk::preSpecialize] CreateFromFd(%d): %s", fd, error.c_str());
 					});
 					if (!fdi)
 						continue;
@@ -421,14 +400,12 @@ private:
 
 			int res = unshare(CLONE_NEWNS | CLONE_NEWCGROUP);
 			if (res != 0) {
-				LOGE("#[zygisk::preSpecialize] unshare: %s", strerror(errno));
 				// There's nothing we can do except returning
 				close(cfd);
 				return;
 			}
 			res = mount("rootfs", "/", nullptr, MS_SLAVE | MS_REC, nullptr);
 			if (res != 0) {
-				LOGE("#[zygisk::preSpecialize] mount(rootfs, \"/\", nullptr, MS_SLAVE | MS_REC, nullptr): returned %d: %d (%s)", res, errno, strerror(errno));
 				// There's nothing we can do except returning
 				close(cfd);
 				return;
@@ -437,17 +414,13 @@ private:
 			static std::vector<MountRuleParser::MountRule> mountRules;
 
 			if (write(cfd, &pid, sizeof(pid)) != sizeof(pid)) {
-				LOGE("#[zygisk::preSpecialize] write: [-> pid]: %s", strerror(errno));
 				res = FAILURE; // Fallback to unmount from zygote
 			} else if (read(cfd, &res, sizeof(res)) != sizeof(res)) {
-				LOGE("#[zygisk::preSpecialize] read: [<- status]: %s", strerror(errno));
 				res = FAILURE; // Fallback to unmount from zygote
 			} else if (res == FAILURE) {
-				LOGW("#[zygisk::preSpecialize]: Companion failed, fallback to unmount in zygote process");
 				mountRules = MountRuleParser::parseMultipleRules([this]() {
 					auto sizeOfRulesPtr = xread<std::size_t>(cfd);
 					if (!sizeOfRulesPtr) {
-						LOGE("#[zygisk::preSpecialize] read: [sizeOfRules]: %s", strerror(errno));
 						return defaultRules;
 					}
 					auto sizeOfRules = *sizeOfRulesPtr;
@@ -455,7 +428,6 @@ private:
 					for (int i = 0; i < sizeOfRules; ++i) {
 						auto rule = xread<std::string>(cfd);
 						if (!rule) {
-							LOGE("#[zygisk::preSpecialize] read: [rule (at index %d)]: %s", i, strerror(errno));
 							return defaultRules;
 						}
 						rules[i] = std::move(*rule);
@@ -467,19 +439,15 @@ private:
 			close(cfd);
 
 			if (res == FAILURE) {
-				LOGW("#[zygisk::preSpecialize]: Companion failed, fallback to unmount in zygote process");
 				unmount(mountRules, getMountInfo()); // Unmount in current (zygote) namespace as fallback
 			}
 
 			// Sanitize FDs after companion communication and potential mount changes
 			for (auto &[fdi, shouldDetach] : fdSanitizeList) {
-				LOGD("#[zygisk::preSpecialize]: Sanitizing FD %d (path: %s, socket: %d), detach: %d",
-					 fdi->fd, fdi->file_path.c_str(), fdi->is_sock, shouldDetach);
 				fdi->ReopenOrDetach([
 											fd = fdi->fd,
 											path = fdi->file_path // Capture path by value for lambda
 									](const std::string &error){
-					LOGE("#[zygisk::preSpecialize]: Sanitize FD %d (%s): %s", fd, path.c_str(), error.c_str());
 				}, shouldDetach);
 			}
 			return;
@@ -513,8 +481,6 @@ static void NoRoot(int fd) {
 	static PropertyManager pm("/data/adb/modules/zygisk_nohello/module.prop");
 
 	static const int compatbility = [] {
-		if (fs::exists("/data/adb/modules/zygisk_shamiko") && !fs::exists("/data/adb/modules/zygisk_shamiko/disable"))
-			return MODULE_CONFLICT;
 		if (fs::exists("/data/adb/modules/zygisk-assistant") && !fs::exists("/data/adb/modules/zygisk-assistant/disable"))
 			return MODULE_CONFLICT;
 		if (fs::exists("/data/adb/modules/treat_wheel") && !fs::exists("/data/adb/modules/treat_wheel/disable"))
@@ -527,6 +493,103 @@ static void NoRoot(int fd) {
 	static const bool doesUmountPersists = []() {
 		return fs::exists("/data/adb/nohello/umount_persist") || fs::exists("/data/adb/nohello/umount_persists");
 	}();
+
+	static const int cleanSignal = forkcall([]() {
+		bool z64 = false, z32 = false;
+		for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+			if (!entry.is_directory())
+				continue;
+			std::string name = entry.path().filename();
+			if (!std::all_of(name.begin(), name.end(), ::isdigit)) continue;
+			auto pid = static_cast<pid_t>(std::stoi(name));
+			std::ifstream cmdline(entry.path() / "cmdline");
+			std::string cmd;
+			std::getline(cmdline, cmd, '\0');
+			if (cmd == "zygote64") {
+				std::ifstream statusFile(("/proc/" + std::to_string(pid) + "/status"));
+				std::string line;
+				pid_t ppid = -1;
+				while (std::getline(statusFile, line)) {
+					if (line.rfind("PPid:", 0) == 0) {
+						ppid = std::stoi(line.substr(5));
+						break;
+					}
+				}
+				if (ppid != 1) continue;
+				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
+					continue;
+				}
+				waitpid(pid, nullptr, 0);
+				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				while (true) {
+					int status = 0;
+					pid_t eventPid = waitpid(-1, &status, 0);
+					if (WIFSTOPPED(status)) {
+						if (status >> 16 == PTRACE_EVENT_FORK) {
+							unsigned long newChildPid = 0;
+							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
+							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
+							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+							break;
+						} else {
+							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
+						}
+					}
+				}
+				z64 = true;
+				continue;
+			}
+			if (cmd == "zygote32") {
+				std::ifstream statusFile(("/proc/" + std::to_string(pid) + "/status"));
+				std::string line;
+				pid_t ppid = -1;
+				while (std::getline(statusFile, line)) {
+					if (line.rfind("PPid:", 0) == 0) {
+						ppid = std::stoi(line.substr(5));
+						break;
+					}
+				}
+				if (ppid != 1) continue;
+				if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) == -1) {
+					continue;
+				}
+				waitpid(pid, nullptr, 0);
+				if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACEFORK) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				if (ptrace(PTRACE_CONT, pid, nullptr, nullptr) == -1) {
+					ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+					continue;
+				}
+				while (true) {
+					int status = 0;
+					pid_t eventPid = waitpid(-1, &status, 0);
+					if (WIFSTOPPED(status)) {
+						if (status >> 16 == PTRACE_EVENT_FORK) {
+							unsigned long newChildPid = 0;
+							ptrace(PTRACE_GETEVENTMSG, eventPid, nullptr, &newChildPid);
+							ptrace(PTRACE_DETACH, newChildPid, nullptr, nullptr);
+							ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
+							break;
+						} else {
+							ptrace(PTRACE_CONT, eventPid, nullptr, nullptr);
+						}
+					}
+				}
+				z32 = true;
+				continue;
+			}
+		}
+		return z64 || z32;
+	});
 
 	static std::vector<std::string> stringRules;
 	static std::vector<MountRuleParser::MountRule> mountRules;
@@ -550,8 +613,7 @@ static void NoRoot(int fd) {
 					for (const auto &rule: rules)
 						redef << rule << std::endl;
 					f.close();
-				} else
-					LOGE("Unable to create `/data/adb/nohello/umount`");
+				}
 			}
 			return rules;
 		}();
@@ -561,7 +623,6 @@ static void NoRoot(int fd) {
 	}
 
 	if (read(fd, &ppid, sizeof(ppid)) != sizeof(ppid)) {
-		LOGE("#[ps::Companion] Failed to read PPID: %s", strerror(errno));
 		close(fd);
 		return;
 	}
@@ -577,40 +638,33 @@ static void NoRoot(int fd) {
 		// Re-work this to avoid issues with bootloops
 		// https://github.com/PerformanC/ReZygisk/issues/171
 		if (ptrace(PTRACE_ATTACH, ppid, nullptr, nullptr) == -1) {
-			LOGE("#[ps::Companion] ptrace(PTRACE_ATTACH, %d, nullptr, nullptr): %s", ppid,
-				 strerror(errno));
 			return -1;
 		}
 		waitpid(ppid, nullptr, 0);
 		if (ptrace(PTRACE_SYSCALL, ppid, nullptr, nullptr) == -1) {
-			LOGE("#[ps::Companion] ptrace(PTRACE_SYSCALL, %d, nullptr, nullptr): %s", ppid, strerror(errno));
 			ptrace(PTRACE_DETACH, ppid, nullptr, nullptr);
 			return -1;
 		}
 		waitpid(ppid, nullptr, 0);
 		ptrace(PTRACE_DETACH, ppid, nullptr, nullptr);
-		LOGD("#[ps::Companion] Cleared ptrace_message for zygote(%d)", ppid);
 		return ppid;
 	}();
 
 	int result = compatbility;
 	if (result == MODULE_CONFLICT) {
-		pm.setProp("description", "[" + emoji::emojize(":warning: ") + "Conflicting modules] " + description);
+		pm.setProp("description", "[\U0000274C Conflicting modules] " + description);
 		if (write(fd, &result, sizeof(result)) != sizeof(result)) {
-			LOGE("#[ps::Companion] Failed to write result: %s", strerror(errno));
 		}
 		close(fd);
 		return;
 	} else {
 		if (write(fd, &result, sizeof(result)) != sizeof(result)) {
-			LOGE("#[ps::Companion] Failed to write result: %s", strerror(errno));
 			close(fd);
 			return;
 		}
 	}
 
 	if (read(fd, &pid, sizeof(pid)) != sizeof(pid)) {
-        LOGE("#[ps::Companion] Failed to read PID: %s", strerror(errno));
 		close(fd);
 		return;
 	}
@@ -620,7 +674,6 @@ static void NoRoot(int fd) {
 		{
 			int res = nscg2(pid);
 			if (!res) { // switchnsto returns true on success (0 from setns)
-				LOGE("#[ps::Companion] Switch namespaces failed for PID %d: %s", pid, strerror(errno));
 				return FAILURE;
 			}
 			auto mounts = getMountInfo();
@@ -632,24 +685,21 @@ static void NoRoot(int fd) {
 
 	if (result == SUCCESS) {
 		successRate++;
-		pm.setProp("description", "[" + emoji::emojize(":yum: ") + "Nohello unmounted " +
+		pm.setProp("description", "[\U0001F60B Nohello unmounted " +
 								  std::to_string(successRate) + " time(s)] " + description);
 	} else if (result == FAILURE) {
 		if (write(fd, &result, sizeof(result)) != sizeof(result)) {
-			LOGE("#[ps::Companion] Failed to write result: %s", strerror(errno));
 			close(fd);
 			return;
 		}
 		if (xwrite(fd, stringRules.size())) {
 			for (int i = 0; i < stringRules.size(); ++i) {
 				if (!xwrite(fd, stringRules[i])) {
-					LOGE("#[ps::Companion] write: [rule (at index %d)]: %s", i, strerror(errno));
 					close(fd);
 					return;
 				}
 			}
 		} else {
-			LOGE("#[ps::Companion] write: [stringRules.size()]: %s", strerror(errno));
 			close(fd);
 			return;
 		}
@@ -657,7 +707,6 @@ static void NoRoot(int fd) {
 		return;
 	}
 	if (write(fd, &result, sizeof(result)) != sizeof(result)) {
-		LOGE("#[ps::Companion] Failed to write result: %s", strerror(errno));
 		close(fd);
 		return;
 	}

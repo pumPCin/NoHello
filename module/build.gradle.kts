@@ -17,7 +17,11 @@ val commitHash: String by rootProject.extra
 val abiList: List<String> by rootProject.extra
 
 android {
+    namespace = "io.github.mhmrdd.zygisk.module.nohello"
+    compileSdk = rootProject.extra["androidCompileSdkVersion"] as Int
+
     defaultConfig {
+    minSdk = rootProject.extra["androidMinSdkVersion"] as Int
         ndk {
             abiFilters.addAll(abiList)
         }
@@ -59,8 +63,6 @@ androidComponents.onVariants { variant ->
             when (it) {
                 "arm64-v8a" -> "arm64"
                 "armeabi-v7a" -> "arm"
-                "x86" -> "x86"
-                "x86_64" -> "x64"
                 else -> error("unsupported abi $it")
             }
         }.joinToString(" ")
