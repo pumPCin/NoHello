@@ -18,7 +18,6 @@
 #include <sys/utsname.h>
 #include <linux/version.h>
 #include <dirent.h>
-#include "log.h"
 
 std::pair<dev_t, ino_t> devinobymap(const std::string& lib, bool useFind = false, unsigned int *ln = nullptr) {
 	std::ifstream maps("/proc/self/maps");
@@ -165,12 +164,9 @@ bool nscg2(pid_t pid) {
         int res = setns(pidfd, CLONE_NEWNS | CLONE_NEWCGROUP);
         close(pidfd);
         if (res) {
-            LOGE("setns(pidfd_open(%d, 0) -> %d (closed), 0): %s", pid, pidfd, strerror(errno));
             goto fallback;
         }
         return true;
-    } else {
-        LOGE("pidfd_open(%d): %s", pid, strerror(errno));
     }
 fallback:
     {
@@ -179,13 +175,11 @@ fallback:
         if (mntfd_fallback != -1) {
             int res = setns(mntfd_fallback, CLONE_NEWNS);
             if (res) {
-                LOGE("setns(open(\"%s\") -> %d, CLONE_NEWNS): %s", mntPath.c_str(), mntfd_fallback, strerror(errno));
                 close(mntfd_fallback);
                 return false;
             }
             close(mntfd_fallback);
         } else {
-            LOGE("open(\"%s\"): %s", mntPath.c_str(), strerror(errno));
             return false;
         }
     }
@@ -195,13 +189,11 @@ fallback:
         if (cgfd_fallback != -1) {
             int res = setns(cgfd_fallback, CLONE_NEWCGROUP);
             if (res) {
-                LOGE("setns(open(\"%s\") -> %d, CLONE_NEWCGROUP): %s", cgPath.c_str(), cgfd_fallback, strerror(errno));
                 close(cgfd_fallback);
                 return false;
             }
             close(cgfd_fallback);
         } else {
-            LOGE("open(\"%s\"): %s", cgPath.c_str(), strerror(errno));
             return false;
         }
     }
